@@ -145,7 +145,7 @@ for sample_name in sample_names:
         for laser_wavelength in laser_wavelengths:
             
             #Load Files//Charger des fichiers
-            datafile = f'/Users/guy/Desktop/Sherbrooke_Lab_Data/Raman Data/Fixed/{sample_name} Area {area_number} {laser_wavelength}_fixed.txt'
+            datafile = f'/<FILEPATH>/{sample_name} Area {area_number} {laser_wavelength}_fixed.txt'
             data = np.genfromtxt(datafile,delimiter='',unpack=True, skip_header = 0, dtype=float)
 
             #Split to x and y components//Diviser en composantes x et y
@@ -324,7 +324,7 @@ for sample_name in sample_names:
 results_df = pd.DataFrame(all_results)
 
 #Define the output file path
-outputfile = '/Users/guy/Desktop/Sherbrooke_Lab_Data/Plot_1_egg_yolk.csv'
+outputfile = '<FILEPATH>/Plot_1_egg_yolk.csv'
 
 #Save the DataFrame to a CSV file.
 #The `index=False` argument prevents pandas from writing a new index column.
