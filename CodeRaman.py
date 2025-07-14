@@ -1,5 +1,5 @@
 #Raman Analysis Code
-
+##Gaussian in First Order is at a fixed position for now##
 ###############
 #Imports//Importations
 ###############
@@ -50,7 +50,7 @@ def lorentzian(x, A, mu, fwhm):
 
 #First Order
 #4 Lorentzians, 1 Gaussian [Sadezky et al. 2005]
-def order1(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4, A5, mu5, sigma5):
+def order1(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4, A5, sigma5):
     """
     Constructs a model for the first-order Raman spectrum of carbon blacks.
 
@@ -82,7 +82,7 @@ def order1(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4, A5
             lorentzian(x, A2, mu2, fwhm2) +
             lorentzian(x, A3, mu3, fwhm3) +
             lorentzian(x, A4, mu4, fwhm4) +
-            gaussian(x, A5, mu5, sigma5))
+            gaussian(x, A5, 1500, sigma5))
 
 #Second Order
 #4 Lorentzians [Sadezky et al. 2005]
@@ -111,7 +111,7 @@ def order2(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4):
             lorentzian(x, A3, mu3, fwhm3) +
             lorentzian(x, A4, mu4, fwhm4))
 
-def chisquared(ys, model_ys):
+def chisquared(ys, model_ys, e_err):
     """
     Calculates the Chi Squared value for a model to help
     determine quality of fit.
@@ -119,17 +119,18 @@ def chisquared(ys, model_ys):
     Args:
         ys (np.ndarray): The recorded data
         model_ys (np.ndarray): The data from the fitted model
+        y_err (np.ndarray): The Measurement errors on the data
         
     Returns:
-        Chi Squared (float): The calculated chi squared value using ( ((ys - model_ys) /model_ys)**2 ).sum()
+        Chi Squared (float): The calculated chi squared value using ( ((ys - model_ys) / y_err)**2 ).sum()
     """
-    return ( ((ys - model_ys) /model_ys)**2 ).sum()
+    return ( ((ys - model_ys) / y_err)**2 ).sum()
 
 
 ##################
 #Input/Output Lists (format input file names as '{sample_name} Area {area_number} {laser_wavelength}.txt')
 ##################
-sample_names = ['NOJP2', 'NOJP7a', 'NOJP9', 'NOJP12a', 'NOJP13', 'NOJP14']
+sample_names = ['NOBP6','NOBP7a','NOBP10','NOBP13']
 area_numbers = [1,2,3,4,5]
 laser_wavelengths = [532]
 
@@ -145,32 +146,30 @@ for sample_name in sample_names:
         for laser_wavelength in laser_wavelengths:
             
             #Load Files//Charger des fichiers
-            datafile = f'/<FILEPATH>/{sample_name} Area {area_number} {laser_wavelength}_fixed.txt'
+            datafile = f'<PLACEHOLDER FILEPATH>/{sample_name} Area {area_number} {laser_wavelength}_01.txt'
+            #datafile = f'/Users/guy/Desktop/Sherbrooke_Lab_Data/T+F3/{sample_name} Site {area_number}_01.txt'
             data = np.genfromtxt(datafile,delimiter='',unpack=True, skip_header = 0, dtype=float)
 
             #Split to x and y components//Diviser en composantes x et y
             x,y = data
+ 
+            #Use to trim data
+            #y = y[0:np.where(x > 3000)[0][0]]
+            #x = x[0:np.where(x > 3000)[0][0]]
             
-            #defining a search area//définir une zone de recherche
-            search_area_y = y[np.where(x > 1200)[0][0]:np.where(x > 1800)[0][0]] #peaks search area
-            search_area_x = x[np.where(x > 1200)[0][0]:np.where(x > 1800)[0][0]] #curve fit search area
-            
-            fit_search_area_x = x[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]]
-            fit_search_area_y = y[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]]
-            
+            #defining a search area for pre-deconvolution peaks//définir une zone de recherche
+            search_area_y = y[np.where(x > 1200)[0][0]:np.where(x > 1800)[0][0]]
+            search_area_x = x[np.where(x > 1200)[0][0]:np.where(x > 1800)[0][0]] 
             
             #remove Fluoresecence slope
-            #Baseline Correction around 1st order peaks
-            baseline_fitter = Baseline(x_data=fit_search_area_x)
-            half_window_1 = 15
-            fit_1, params_1 = baseline_fitter.std_distribution(fit_search_area_y, half_window_1, smooth_half_window=10)
-            fit_search_area_y = fit_search_area_y - fit_1
-            
-            #Around 2nd order peaks
             baseline_fitter_2 = Baseline(x_data=x)
-            half_window_2 = 2
-            fit_2, params_2 = baseline_fitter_2.std_distribution(y, half_window_2, smooth_half_window=10)
+            half_window_2 = 55
+            fit_2, params_2 = baseline_fitter_2.arpls(y, lam = 1e6)
             edited_y = y - fit_2
+            
+            #defining a search area for 1st order peaks fit
+            fit_search_area_x = x[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]]
+            fit_search_area_y = edited_y[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]]
             
             #defining a search area for 2nd Order peaks fit
             fit2_search_area_x = x[np.where(x > 2000)[0][0]:]
@@ -180,7 +179,7 @@ for sample_name in sample_names:
             fig = plt.figure()
             ax = fig.add_subplot()
             ax.plot(x,edited_y, zorder = 10, label = 'Raw Data minus Fluorescence Baseline')
-
+            ax.plot(x,y, label = 'Raw Data')
             ax.set_xlim(800)
             ax.set_xlabel('Raman Shift (cm$^{-1}$)')
             ax.set_ylabel('Intensity (counts)')
@@ -191,7 +190,7 @@ for sample_name in sample_names:
                 temp_peaks, properties = find_peaks(search_area_y,
                                                     height= (search_area_y.mean()),
                                                     prominence=4,
-                                                    distance=20)
+                                                    distance=50)
 
             else: #Edit find_peaks as appropriate for other wavelengths//modifiez « find_peaks » selon vos besoins
                 temp_peaks, properties = find_peaks(search_area_y,
@@ -205,24 +204,24 @@ for sample_name in sample_names:
             #Find Local Minimum between First order Peaks//Trouver le minimum local
             valley_y = min(y[peaks[0]:peaks[1]])
             valley_x = (x[np.where(y == valley_y)[0]])[0]
-            valley_x,valley_y
             
             #Plotting Bands
-            ax.axvline(x[peaks[0]],color = 'r',label = f'D Band:{x[peaks[0]]}')
-            ax.axvline(x[peaks[1]],color = 'g',label = f'G Band: {x[peaks[1]]}')
-            ax.axvline(valley_x,color = 'y',label = f'Local Minimum: {valley_x}')
+            # ax.axvline(x[peaks[0]],color = 'r',label = f'D Band:{x[peaks[0]]}')
+            # ax.axvline(x[peaks[1]],color = 'g',label = f'G Band: {x[peaks[1]]}')
+            # ax.axvline(valley_x,color = 'y',label = f'Local Minimum: {valley_x}')
             
             #########################
             #Curve Fitting to Deconvolve Peaks
             #########################
 
             # Initial guesses for Curve Fitting: [A1, mu1, sigma1, A2, mu2, sigma2...]
-            p0 = [y[peaks[0]], 1350, 10, y[peaks[1]], 1590, 10, y[peaks[0]], 1620, 10, y[peaks[1]], 1180, 10, y[peaks[0]]/2, 1500, 10]
+            p0 = [y[peaks[0]], 1350, 500, y[peaks[0]]/2, 1590, 50, y[peaks[0]]/2, 1620, 50, y[peaks[0]]/5, 1180 , 200, y[peaks[0]]/10, 100]
+                #D1                        #G                      #D2                       #D4                     #D3
             p02 = [y[peaks[0]], 2450, 10, y[peaks[1]], 2700, 10, y[peaks[0]], 2900, 10, y[peaks[1]], 3100, 10]
 
             #Bounds For curve_fit()
-            lower_bounds = [0, 0, 0,0, 0, 0,0, 0, 0,0, 0, 0,0, 0, 0] 
-            upper_bounds = [np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf, np.inf]
+            lower_bounds = [0, 0, 0,0, 0, 0,0, 0, 0,0, 0, 0, 0, 0] 
+            upper_bounds = [np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf]
             bounds = (lower_bounds, upper_bounds)
             bounds2 = (lower_bounds[0:12],upper_bounds[0:12])
             try:    
@@ -254,7 +253,7 @@ for sample_name in sample_names:
                 ax.plot(x, lorentzian(x,order1_fit[3], order1_fit[4], order1_fit[5]),label = 'G')
                 ax.plot(x, lorentzian(x,order1_fit[6], order1_fit[7], order1_fit[8]),label = 'D2')
                 ax.plot(x, lorentzian(x,order1_fit[9], order1_fit[10], order1_fit[11]),label = 'D4')
-                ax.plot(x, gaussian(x,order1_fit[12], order1_fit[13], order1_fit[14]),label = 'D3')
+                ax.plot(x, gaussian(x,order1_fit[12], 1500, order1_fit[13]),label = 'D3', color = 'y')
 
                 #Second Order Plots
                 ax.plot(fit2_search_area_x, order2_fit_y, label = '2nd Order Deconvolution')
@@ -270,13 +269,14 @@ for sample_name in sample_names:
                 first_order_total_A = quad(order1,fit_search_area_x[0],fit_search_area_x[-1], args = tuple(order1_fit))
                 D1_A = quad(lorentzian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[0], order1_fit[1], order1_fit[2]))
                 D2_A = quad(lorentzian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[6], order1_fit[7], order1_fit[8]))
-                D3_A = quad(gaussian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[12], order1_fit[13], order1_fit[14]))
+                D3_A = quad(gaussian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[12], 1500, order1_fit[13]))
                 D4_A = quad(lorentzian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[9], order1_fit[10], order1_fit[11]))
                 G_A = quad(lorentzian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[3], order1_fit[4], order1_fit[5]))
 
                 #Chi Squared (Quality of Fit) Calculations 
                 #(for first order, second order deconvolution is for validation of first order deconvolution positions only)
-                chi_squared = chisquared(fit_search_area_y,order1_fit_y)
+                y_err = 25*np.ones(len(order1_fit_y)) #PLACEHOLDER ESTIMATE#
+                chi_squared = chisquared(fit_search_area_y,order1_fit_y,y_err)
 
                 current_results = {
                     'Name': f'{sample_name} Area {area_number} {laser_wavelength}nm',
@@ -294,7 +294,7 @@ for sample_name in sample_names:
                     'G_Position': order1_fit[4],
                     'D1_Position': order1_fit[1],
                     'D2_Position': order1_fit[7],
-                    'D3_Position': order1_fit[13],
+                    'D3_Position': 1500,
                     'D4_Position': order1_fit[10],
 
                     #First Order Band Heights
@@ -324,7 +324,7 @@ for sample_name in sample_names:
 results_df = pd.DataFrame(all_results)
 
 #Define the output file path
-outputfile = '<FILEPATH>/Plot_1_egg_yolk.csv'
+outputfile = '<PLACEHOLDER FILEPATH>/NOBP.csv'
 
 #Save the DataFrame to a CSV file.
 #The `index=False` argument prevents pandas from writing a new index column.
