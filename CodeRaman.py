@@ -1,11 +1,11 @@
 #Raman Analysis Code
-##Gaussian in First Order is at a fixed position for now##
+#Gaussian is fixed here!!
 ###############
 #Imports//Importations
 ###############
+
 import numpy as np #arrays//tableaux
 import pandas as pd #Results Handling in DataFrames
-import scipy.constants as sc #scientific constants for gaussian etc.//constantes scientifiques pour gaussian etc.
 import matplotlib.pyplot as plt #plotting//Traçage
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
@@ -130,7 +130,7 @@ def chisquared(ys, model_ys, e_err):
 ##################
 #Input/Output Lists (format input file names as '{sample_name} Area {area_number} {laser_wavelength}.txt')
 ##################
-sample_names = ['NOBP6','NOBP7a','NOBP10','NOBP13']
+sample_names = ['NOBP6','NOBP7a','NOBP10','NOBP13','NOJP2','NOJP7a','NOJP9','NOJP12a','NOJP13','NOJP14','NOMP13']
 area_numbers = [1,2,3,4,5]
 laser_wavelengths = [532]
 
@@ -146,7 +146,7 @@ for sample_name in sample_names:
         for laser_wavelength in laser_wavelengths:
             
             #Load Files//Charger des fichiers
-            datafile = f'<PLACEHOLDER FILEPATH>/{sample_name} Area {area_number} {laser_wavelength}_01.txt'
+            datafile = f'<PLACEHOLDER FILEPATH>{sample_name} Area {area_number} {laser_wavelength}_01.txt'
             #datafile = f'/Users/guy/Desktop/Sherbrooke_Lab_Data/T+F3/{sample_name} Site {area_number}_01.txt'
             data = np.genfromtxt(datafile,delimiter='',unpack=True, skip_header = 0, dtype=float)
 
@@ -156,16 +156,15 @@ for sample_name in sample_names:
             #Use to trim data
             #y = y[0:np.where(x > 3000)[0][0]]
             #x = x[0:np.where(x > 3000)[0][0]]
-            
-            #defining a search area for pre-deconvolution peaks//définir une zone de recherche
-            search_area_y = y[np.where(x > 1200)[0][0]:np.where(x > 1800)[0][0]]
-            search_area_x = x[np.where(x > 1200)[0][0]:np.where(x > 1800)[0][0]] 
-            
+
             #remove Fluoresecence slope
             baseline_fitter_2 = Baseline(x_data=x)
-            half_window_2 = 55
             fit_2, params_2 = baseline_fitter_2.arpls(y, lam = 1e6)
             edited_y = y - fit_2
+            
+            #defining a search area for pre-deconvolution peaks//définir une zone de recherche
+            search_area_y = edited_y[np.where(x > 1200)[0][0]:np.where(x > 1750)[0][0]]
+            search_area_x = x[np.where(x > 1200)[0][0]:np.where(x > 1750)[0][0]]
             
             #defining a search area for 1st order peaks fit
             fit_search_area_x = x[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]]
@@ -190,7 +189,7 @@ for sample_name in sample_names:
                 temp_peaks, properties = find_peaks(search_area_y,
                                                     height= (search_area_y.mean()),
                                                     prominence=4,
-                                                    distance=50)
+                                                    distance=len(edited_y)/25)
 
             else: #Edit find_peaks as appropriate for other wavelengths//modifiez « find_peaks » selon vos besoins
                 temp_peaks, properties = find_peaks(search_area_y,
@@ -199,16 +198,16 @@ for sample_name in sample_names:
                                                     distance=80)
                 
 
-            peaks = [np.where(y == search_area_y[temp_peaks[0]])[0][0],np.where(y == search_area_y[temp_peaks[1]])[0][0]]
+            peaks = [np.where(edited_y == search_area_y[temp_peaks[0]])[0][0],np.where(edited_y == search_area_y[temp_peaks[1]])[0][0]]
 
             #Find Local Minimum between First order Peaks//Trouver le minimum local
-            valley_y = min(y[peaks[0]:peaks[1]])
-            valley_x = (x[np.where(y == valley_y)[0]])[0]
+            valley_y = min(edited_y[peaks[0]:peaks[1]])
+            valley_x = (x[np.where(edited_y == valley_y)[0]])[0]
             
             #Plotting Bands
-            # ax.axvline(x[peaks[0]],color = 'r',label = f'D Band:{x[peaks[0]]}')
-            # ax.axvline(x[peaks[1]],color = 'g',label = f'G Band: {x[peaks[1]]}')
-            # ax.axvline(valley_x,color = 'y',label = f'Local Minimum: {valley_x}')
+            ax.axvline(x[peaks[0]],color = 'r',label = f'D Band:{x[peaks[0]]}')
+            ax.axvline(x[peaks[1]],color = 'g',label = f'G Band: {x[peaks[1]]}')
+            ax.axvline(valley_x,color = 'y',label = f'Local Minimum: {valley_x}')
             
             #########################
             #Curve Fitting to Deconvolve Peaks
@@ -275,7 +274,18 @@ for sample_name in sample_names:
 
                 #Chi Squared (Quality of Fit) Calculations 
                 #(for first order, second order deconvolution is for validation of first order deconvolution positions only)
-                y_err = 25*np.ones(len(order1_fit_y)) #PLACEHOLDER ESTIMATE#
+                
+                gain = 3
+                readout_noise_electrons = 4
+                readout_noise_counts = readout_noise_electrons/gain
+                
+                total_electrons = (y[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]] * gain)
+                baseline_electrons = (fit_2[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]] * gain)
+                
+                shot_noise_electrons = np.sqrt(total_electrons + baseline_electrons)
+                shot_noise_counts = shot_noise_electrons/(gain)
+                
+                y_err = np.sqrt((shot_noise_counts**2) + (readout_noise_counts**2))
                 chi_squared = chisquared(fit_search_area_y,order1_fit_y,y_err)
 
                 current_results = {
@@ -285,7 +295,12 @@ for sample_name in sample_names:
                     'D_Band_Raw': x[peaks[0]],
                     'G_Band_Raw': x[peaks[1]],
                     'Local_Minimum': valley_x,
-
+                    
+                    #Un-Deconvolved band heights
+                    'D_Band_Raw_Height': y[peaks[0]],
+                    'G_Band_Raw_Height': y[peaks[1]],
+                    'Local_Minimum_Height': valley_y,
+                    
                     #Fit Quality Monitoring
                     'Chi_Squared': chi_squared,
                     'Reduced_Chi_Squared': chi_squared / (len(fit_search_area_y) - len(order1_fit)),
@@ -324,7 +339,7 @@ for sample_name in sample_names:
 results_df = pd.DataFrame(all_results)
 
 #Define the output file path
-outputfile = '<PLACEHOLDER FILEPATH>/NOBP.csv'
+outputfile = '<PLACEHOLDER FILEPATH>/Master Data.csv'
 
 #Save the DataFrame to a CSV file.
 #The `index=False` argument prevents pandas from writing a new index column.
