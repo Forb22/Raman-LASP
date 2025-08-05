@@ -1,5 +1,5 @@
 #Raman Analysis Code
-#Gaussian is fixed here!!
+
 ###############
 #Imports//Importations
 ###############
@@ -31,6 +31,18 @@ def gaussian(x, A, mu, sigma):
     """
     return A*np.exp(-(x-mu)**2/(2*sigma**2))
 
+def gaussian_area(A, sigma):
+    """Calculates the area of a Gaussian peak profile.
+
+    Args:
+        A (float): The amplitude (height) of the peak.
+        sigma (float): The standard deviation (width) of the peak.
+
+    Returns:
+        float: The area of the Gaussian peak profile.
+        """
+    return A*(sigma/np.sqrt(2*np.pi))
+
 #Single Lorentzian
 def lorentzian(x, A, mu, fwhm):
     """
@@ -48,9 +60,22 @@ def lorentzian(x, A, mu, fwhm):
     gamma = fwhm / 2  # gamma = Half-width at half-maximum
     return A*(gamma**2/((x-mu)**2 + gamma**2))
 
+def lorentzian_area(A,fwhm):
+    """
+    Calculates the area of a lorentzian peak profile
+
+    Args:
+        A (float): The amplitude (height) of the peak
+        fwhm (float): The full width at half maximum
+
+    Returns:
+        float: the area of the Lorentzian peak profile
+    """
+    return A*(np.pi/2)*fwhm
+
 #First Order
 #4 Lorentzians, 1 Gaussian [Sadezky et al. 2005]
-def order1(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4, A5, sigma5):
+def order1(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4, A5, mu5, sigma5):
     """
     Constructs a model for the first-order Raman spectrum of carbon blacks.
 
@@ -82,7 +107,7 @@ def order1(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4, A5
             lorentzian(x, A2, mu2, fwhm2) +
             lorentzian(x, A3, mu3, fwhm3) +
             lorentzian(x, A4, mu4, fwhm4) +
-            gaussian(x, A5, 1500, sigma5))
+            gaussian(x, A5, mu5, sigma5))
 
 #Second Order
 #4 Lorentzians [Sadezky et al. 2005]
@@ -130,7 +155,7 @@ def chisquared(ys, model_ys, e_err):
 ##################
 #Input/Output Lists (format input file names as '{sample_name} Area {area_number} {laser_wavelength}.txt')
 ##################
-sample_names = ['NOBP6','NOBP7a','NOBP10','NOBP13','NOJP2','NOJP7a','NOJP9','NOJP12a','NOJP13','NOJP14','NOMP13']
+sample_names = ['NOBP6','NOBP7a','NOBP10','NOBP11c','NOBP13','NOJP2','NOJP7a','NOJP5a','NOJP9','NOJP12a','NOJP13','NOJP14','NOMP13','NOMP3a','NOMP6a','NOMP8','NOMP12', 'NOJC1a','NOJC2','NOJC3']
 area_numbers = [1,2,3,4,5]
 laser_wavelengths = [532]
 
@@ -146,7 +171,7 @@ for sample_name in sample_names:
         for laser_wavelength in laser_wavelengths:
             
             #Load Files//Charger des fichiers
-            datafile = f'<PLACEHOLDER FILEPATH>{sample_name} Area {area_number} {laser_wavelength}_01.txt'
+            datafile = f'/Users/guy/Desktop/Sherbrooke_Lab_Data/Raman Data/ALL 532/{sample_name} Area {area_number} {laser_wavelength}_01.txt'
             #datafile = f'/Users/guy/Desktop/Sherbrooke_Lab_Data/T+F3/{sample_name} Site {area_number}_01.txt'
             data = np.genfromtxt(datafile,delimiter='',unpack=True, skip_header = 0, dtype=float)
 
@@ -177,9 +202,9 @@ for sample_name in sample_names:
             #Plotting//Traçage
             fig = plt.figure()
             ax = fig.add_subplot()
-            ax.plot(x,edited_y, zorder = 10, label = 'Raw Data minus Fluorescence Baseline')
+            ax.plot(x,edited_y, zorder = 10, label = 'Raw Data minus Fluorescence')
             ax.plot(x,y, label = 'Raw Data')
-            ax.set_xlim(800)
+            ax.set_xlim(100,2000)
             ax.set_xlabel('Raman Shift (cm$^{-1}$)')
             ax.set_ylabel('Intensity (counts)')
             ax.set_title(f'Raman Spectrum: {sample_name} Area {area_number} {laser_wavelength}')
@@ -200,6 +225,8 @@ for sample_name in sample_names:
 
             peaks = [np.where(edited_y == search_area_y[temp_peaks[0]])[0][0],np.where(edited_y == search_area_y[temp_peaks[1]])[0][0]]
 
+            max_height = max(edited_y[peaks[0]],edited_y[peaks[1]])
+
             #Find Local Minimum between First order Peaks//Trouver le minimum local
             valley_y = min(edited_y[peaks[0]:peaks[1]])
             valley_x = (x[np.where(edited_y == valley_y)[0]])[0]
@@ -214,21 +241,46 @@ for sample_name in sample_names:
             #########################
 
             # Initial guesses for Curve Fitting: [A1, mu1, sigma1, A2, mu2, sigma2...]
-            p0 = [y[peaks[0]], 1350, 500, y[peaks[0]]/2, 1590, 50, y[peaks[0]]/2, 1620, 50, y[peaks[0]]/5, 1180 , 200, y[peaks[0]]/10, 100]
-                #D1                        #G                      #D2                       #D4                     #D3
-            p02 = [y[peaks[0]], 2450, 10, y[peaks[1]], 2700, 10, y[peaks[0]], 2900, 10, y[peaks[1]], 3100, 10]
+            p0 = [max_height/2,  1350, 50, #D1
+                  max_height/2,  1580, 50,  #G
+                  max_height/2,  1620, 50,  #D2
+                  max_height/5,  1200, 200, #D4
+                  max_height/10, 1530, 50] #D3
+
+            p02 = [max_height/2, 2450, 10,
+                   max_height/2, 2700, 10,
+                   max_height/2, 2900, 10,
+                   max_height/2, 3100, 10]
 
             #Bounds For curve_fit()
-            lower_bounds = [0, 0, 0,0, 0, 0,0, 0, 0,0, 0, 0, 0, 0] 
-            upper_bounds = [np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf, np.inf,np.inf, np.inf]
-            bounds = (lower_bounds, upper_bounds)
-            bounds2 = (lower_bounds[0:12],upper_bounds[0:12])
-            try:    
-                order1_fit, _ = curve_fit(order1, fit_search_area_x, fit_search_area_y, p0=p0, bounds = bounds, maxfev=10000)
-                order1_fit_y = order1(fit_search_area_x, *order1_fit)
+            lower_bounds_1 = [0, 1300, 0, #D1
+                              0, 1530, 0, #G
+                              0, 1570, 0, #D2
+                              0, 1100, 0, #D4
+                              0, 1450, 0] #D3
 
-                order2_fit, _ = curve_fit(order2, fit2_search_area_x, fit2_search_area_y, p0=p02, maxfev = 10000, bounds = bounds2)
-                order2_fit_y = order2(fit2_search_area_x, *order2_fit)
+            upper_bounds_1 = [max_height, 1400, np.inf, #D1
+                              max_height, 1630, np.inf, #G
+                              max_height, 1670, np.inf, #D2
+                              max_height, 1250, np.inf, #D4
+                              max_height, 1550, np.inf] #D3
+            bounds_1 = (lower_bounds_1, upper_bounds_1)
+
+            lower_bounds_2 = [0, 2250, 0, #D1
+                              0, 2250, 0, #G
+                              0, 2250, 0, #D2
+                              0, 2250, 0] #D4
+
+            upper_bounds_2 = [max_height, 3500, np.inf,
+                              max_height, 3500, np.inf,
+                              max_height, 3500, np.inf,
+                              max_height, 3500, np.inf]
+
+            bounds_2 = (lower_bounds_2,upper_bounds_2)
+
+            try:
+                order1_fit, _ = curve_fit(order1, fit_search_area_x, fit_search_area_y, p0=p0, bounds = bounds_1, maxfev=1000, loss = 'huber')
+                order1_fit_y = order1(fit_search_area_x, *order1_fit)
             
             #Error Handling
             except ValueError as e:
@@ -245,71 +297,65 @@ for sample_name in sample_names:
 
             
             else:
-                
+
                 #First Order Plots
-                ax.plot(fit_search_area_x, order1_fit_y, label=f'Sadezkye Deconvolution', linestyle='--')
+                ax.plot(fit_search_area_x, order1_fit_y, label=f'1st Order Deconvolution', linestyle='--')
                 ax.plot(x, lorentzian(x,order1_fit[0], order1_fit[1], order1_fit[2]),label = 'D1')
                 ax.plot(x, lorentzian(x,order1_fit[3], order1_fit[4], order1_fit[5]),label = 'G')
                 ax.plot(x, lorentzian(x,order1_fit[6], order1_fit[7], order1_fit[8]),label = 'D2')
                 ax.plot(x, lorentzian(x,order1_fit[9], order1_fit[10], order1_fit[11]),label = 'D4')
-                ax.plot(x, gaussian(x,order1_fit[12], 1500, order1_fit[13]),label = 'D3', color = 'y')
+                ax.plot(x, gaussian(x,order1_fit[12], order1_fit[13], order1_fit[14]),label = 'D3', color = 'y')
 
-                #Second Order Plots
-                ax.plot(fit2_search_area_x, order2_fit_y, label = '2nd Order Deconvolution')
-                ax.plot(x, lorentzian(x, order2_fit[0], order2_fit[1], order2_fit[2]))
-                ax.plot(x, lorentzian(x, order2_fit[3], order2_fit[4], order2_fit[5]))
-                ax.plot(x, lorentzian(x, order2_fit[6], order2_fit[7], order2_fit[8]))
-                ax.plot(x, lorentzian(x, order2_fit[9], order2_fit[10], order2_fit[11]))
-                
                 #########################
                 #Integration for Area Under Deconvolved Peaks
                 #########################
 
                 first_order_total_A = quad(order1,fit_search_area_x[0],fit_search_area_x[-1], args = tuple(order1_fit))
-                D1_A = quad(lorentzian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[0], order1_fit[1], order1_fit[2]))
-                D2_A = quad(lorentzian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[6], order1_fit[7], order1_fit[8]))
-                D3_A = quad(gaussian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[12], 1500, order1_fit[13]))
-                D4_A = quad(lorentzian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[9], order1_fit[10], order1_fit[11]))
-                G_A = quad(lorentzian,fit_search_area_x[0],fit_search_area_x[-1],args = (order1_fit[3], order1_fit[4], order1_fit[5]))
+                D1_A = lorentzian_area(order1_fit[0], order1_fit[2])
+                D2_A = lorentzian_area(order1_fit[6], order1_fit[8])
+                D3_A = gaussian_area(order1_fit[12], order1_fit[14])
+                D4_A = lorentzian_area(order1_fit[9], order1_fit[11])
+                G_A = lorentzian_area(order1_fit[3], order1_fit[5])
 
-                #Chi Squared (Quality of Fit) Calculations 
+
+                #Chi Squared (Quality of Fit) Calculations
                 #(for first order, second order deconvolution is for validation of first order deconvolution positions only)
-                
+
                 gain = 3
                 readout_noise_electrons = 4
                 readout_noise_counts = readout_noise_electrons/gain
-                
+
                 total_electrons = (y[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]] * gain)
                 baseline_electrons = (fit_2[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]] * gain)
-                
+
                 shot_noise_electrons = np.sqrt(total_electrons + baseline_electrons)
                 shot_noise_counts = shot_noise_electrons/(gain)
-                
+
                 y_err = np.sqrt((shot_noise_counts**2) + (readout_noise_counts**2))
                 chi_squared = chisquared(fit_search_area_y,order1_fit_y,y_err)
 
                 current_results = {
                     'Name': f'{sample_name} Area {area_number} {laser_wavelength}nm',
 
+                    #Fit Quality Monitoring
+                    'Chi_Squared': chi_squared,
+                    'Reduced_Chi_Squared': chi_squared / (len(fit_search_area_y) - len(order1_fit)),
+
                     #Un-deconvolved band positions
                     'D_Band_Raw': x[peaks[0]],
                     'G_Band_Raw': x[peaks[1]],
                     'Local_Minimum': valley_x,
-                    
+
                     #Un-Deconvolved band heights
                     'D_Band_Raw_Height': y[peaks[0]],
                     'G_Band_Raw_Height': y[peaks[1]],
                     'Local_Minimum_Height': valley_y,
-                    
-                    #Fit Quality Monitoring
-                    'Chi_Squared': chi_squared,
-                    'Reduced_Chi_Squared': chi_squared / (len(fit_search_area_y) - len(order1_fit)),
 
                     #First Order Band Positions
                     'G_Position': order1_fit[4],
                     'D1_Position': order1_fit[1],
                     'D2_Position': order1_fit[7],
-                    'D3_Position': 1500,
+                    'D3_Position': order1_fit[13],
                     'D4_Position': order1_fit[10],
 
                     #First Order Band Heights
@@ -320,15 +366,79 @@ for sample_name in sample_names:
                     'D4_Height': order1_fit[9],
 
                     #First Order Band Areas
-                    'G_Area': G_A[0],
-                    'D1_Area': D1_A[0],
-                    'D2_Area': D2_A[0],
-                    'D3_Area': D3_A[0],
-                    'D4_Area': D4_A[0]
+                    'G_Area': G_A,
+                    'D1_Area': D1_A,
+                    'D2_Area': D2_A,
+                    'D3_Area': D3_A,
+                    'D4_Area': D4_A,
+
+                    ## Height Ratios (e.g., D1_Height / G_Height)
+                    # Denominator: G_Height (order1_fit[3])
+                    'D1_G_Height_Ratio': order1_fit[0] / order1_fit[3] if order1_fit[3] != 0 else None,
+                    'D2_G_Height_Ratio': order1_fit[6] / order1_fit[3] if order1_fit[3] != 0 else None,
+                    'D3_G_Height_Ratio': order1_fit[12] / order1_fit[3] if order1_fit[3] != 0 else None,
+                    'D4_G_Height_Ratio': order1_fit[9] / order1_fit[3] if order1_fit[3] != 0 else None,
+
+                    # Denominator: D1_Height (order1_fit[0])
+                    'D2_D1_Height_Ratio': order1_fit[6] / order1_fit[0] if order1_fit[0] != 0 else None,
+                    'D3_D1_Height_Ratio': order1_fit[12] / order1_fit[0] if order1_fit[0] != 0 else None,
+                    'D4_D1_Height_Ratio': order1_fit[9] / order1_fit[0] if order1_fit[0] != 0 else None,
+
+                    # Denominator: D2_Height (order1_fit[6])
+                    'D3_D2_Height_Ratio': order1_fit[12] / order1_fit[6] if order1_fit[6] != 0 else None,
+                    'D4_D2_Height_Ratio': order1_fit[9] / order1_fit[6] if order1_fit[6] != 0 else None,
+
+                    # Denominator: D3_Height (order1_fit[12])
+                    'D4_D3_Height_Ratio': order1_fit[9] / order1_fit[12] if order1_fit[12] != 0 else None,
+
+                    ## Area Ratios (e.g., D1_Area / G_Area)
+                    # Denominator: G_Area (G_A)
+                    'D1_G_Area_Ratio': D1_A / G_A if G_A != 0 else None,
+                    'D2_G_Area_Ratio': D2_A / G_A if G_A != 0 else None,
+                    'D3_G_Area_Ratio': D3_A / G_A if G_A != 0 else None,
+                    'D4_G_Area_Ratio': D4_A / G_A if G_A != 0 else None,
+
+                    # Denominator: D1_Area (D1_A)
+                    'D2_D1_Area_Ratio': D2_A / D1_A if D1_A != 0 else None,
+                    'D3_D1_Area_Ratio': D3_A / D1_A if D1_A != 0 else None,
+                    'D4_D1_Area_Ratio': D4_A / D1_A if D1_A != 0 else None,
+
+                    # Denominator: D2_Area (D2_A)
+                    'D3_D2_Area_Ratio': D3_A / D2_A if D2_A != 0 else None,
+                    'D4_D2_Area_Ratio': D4_A / D2_A if D2_A != 0 else None,
+
+                    # Denominator: D3_Area (D3_A)
+                    'D4_D3_Area_Ratio': D4_A / D3_A if D3_A != 0 else None,
                 }
 
-                #Append the dictionary for this spectrum to our master list
+                #Append the dictionary for this spectrum to master list
                 all_results.append(current_results)
+
+                try:
+                    order2_fit, _ = curve_fit(order2, fit2_search_area_x, fit2_search_area_y, p0=p02, maxfev = 100, bounds = bounds_2)
+                    order2_fit_y = order2(fit2_search_area_x, *order2_fit)
+                    #Error Handling
+                except ValueError as e:
+                    print(f"Couldn't fit 2nd Order due to a data problem (ValueError). Moving to next sample.")
+                    print(f"  Details: {e}")
+
+                except RuntimeError as e:
+                    print(f"Couldn't fit 2nd Order because the algorithm failed (RuntimeError). Moving to next sample.")
+                    print(f"  Details: {e}")
+
+                except Exception as e:
+                    print(f"An UNEXPECTED error in 2nd Order Fit occurred: {type(e).__name__}. Moving to next sample.")
+                    print(f"  Details: {e}")
+
+                else:
+                    #Second Order Plots
+                    #ax.plot(fit2_search_area_x, order2_fit_y, label = '2nd Order Deconvolution')
+                    ax.plot(x, lorentzian(x, order2_fit[0], order2_fit[1], order2_fit[2]))
+                    ax.plot(x, lorentzian(x, order2_fit[3], order2_fit[4], order2_fit[5]))
+                    ax.plot(x, lorentzian(x, order2_fit[6], order2_fit[7], order2_fit[8]))
+                    ax.plot(x, lorentzian(x, order2_fit[9], order2_fit[10], order2_fit[11]))
+
+
 
             #Show Plot
             ax.legend()
@@ -339,7 +449,7 @@ for sample_name in sample_names:
 results_df = pd.DataFrame(all_results)
 
 #Define the output file path
-outputfile = '<PLACEHOLDER FILEPATH>/Master Data.csv'
+outputfile = '/Users/guy/Desktop/Sherbrooke_Lab_Data/Raman Data/Master Data TST.csv'
 
 #Save the DataFrame to a CSV file.
 #The `index=False` argument prevents pandas from writing a new index column.
