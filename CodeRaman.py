@@ -15,7 +15,7 @@ from scipy.integrate import quad
 ###############
 #Functions for Deconvolution//Fonctions pour déconvolution
 ###############
-#Single Gaussian 
+#Single Gaussian
 def gaussian(x, A, mu, sigma):
     """
     Calculates a Gaussian peak profile.
@@ -116,7 +116,7 @@ def order2(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4):
     Constructs a model for the second-order Raman spectrum of carbon blacks.
 
     Combines four Lorentzian peaks to model the second-order
-    region (approx. 2000-3500 cm-1) of the Raman spectrum for disordered 
+    region (approx. 2000-3500 cm-1) of the Raman spectrum for disordered
     carbon materials. This deconvolution is based on the four-band model used
     for carbon blacks by [Sadezky et al. 2005]
 
@@ -136,16 +136,16 @@ def order2(x, A1, mu1, fwhm1, A2, mu2, fwhm2, A3, mu3, fwhm3, A4, mu4, fwhm4):
             lorentzian(x, A3, mu3, fwhm3) +
             lorentzian(x, A4, mu4, fwhm4))
 
-def chisquared(ys, model_ys, e_err):
+def chisquared(ys, model_ys, y_err):
     """
     Calculates the Chi Squared value for a model to help
     determine quality of fit.
-    
+
     Args:
         ys (np.ndarray): The recorded data
         model_ys (np.ndarray): The data from the fitted model
         y_err (np.ndarray): The Measurement errors on the data
-        
+
     Returns:
         Chi Squared (float): The calculated chi squared value using ( ((ys - model_ys) / y_err)**2 ).sum()
     """
@@ -159,6 +159,35 @@ sample_names = ['NOBP6','NOBP7a','NOBP10','NOBP11c','NOBP13','NOJP2','NOJP7a','N
 area_numbers = [1,2,3,4,5]
 laser_wavelengths = [532]
 
+######################
+#Adjustible Parameters
+######################
+
+DATA_TRIM_START = 0
+DATA_TRIM_END = 3500
+
+BASELINE_FITTER_LAMBDA = 1e6 #Strictness of the baseline fitter curve. Bigger -> Stricter
+
+FIND_PEAKS_SEARCH_AREA_START = 1200 #Pre-Deconvolution
+FIND_PEAKS_SEARCH_AREA_END = 1750
+
+FIRST_ORDER_SEARCH_AREA_START = 500
+FIRST_ORDER_SEARCH_AREA_END = 2000
+
+SECOND_ORDER_SEARCH_AREA_START = 2000
+#SECOND_ORDER_SEARCH_AREA_END left blank for now to have the fit go between SECOND_ORDER_SEARCH_AREA_START and the end of the data
+
+PLOT_X_START = 100
+PLOT_X_END = 2000
+
+FIND_PEAKS_PROMINENCE = 4
+
+GAIN = 5.172
+READOUT_NOISE_ELECTRONS = 4
+
+#Define the output file path
+OUTPUTFILE = '/Users/guy/Desktop/Sherbrooke_Lab_Data/Raman Data/Master Data TST.csv'
+
 #List for results processing//listes pour le traitement des résultats
 #To store a dictionary of results for each spectrum
 all_results = []
@@ -169,7 +198,7 @@ all_results = []
 for sample_name in sample_names:
     for area_number in area_numbers:
         for laser_wavelength in laser_wavelengths:
-            
+
             #Load Files//Charger des fichiers
             datafile = f'/Users/guy/Desktop/Sherbrooke_Lab_Data/Raman Data/ALL 532/{sample_name} Area {area_number} {laser_wavelength}_01.txt'
             #datafile = f'/Users/guy/Desktop/Sherbrooke_Lab_Data/T+F3/{sample_name} Site {area_number}_01.txt'
@@ -177,34 +206,34 @@ for sample_name in sample_names:
 
             #Split to x and y components//Diviser en composantes x et y
             x,y = data
- 
+
             #Use to trim data
-            #y = y[0:np.where(x > 3000)[0][0]]
-            #x = x[0:np.where(x > 3000)[0][0]]
+            #y = y[np.where(x > DATA_TRIM_START)[0][0]:np.where(x > DATA_TRIM_END)[0][0]]
+            #x = x[np.where(x > DATA_TRIM_START)[0][0]:np.where(x > DATA_TRIM_END)[0][0]]
 
             #remove Fluoresecence slope
             baseline_fitter_2 = Baseline(x_data=x)
-            fit_2, params_2 = baseline_fitter_2.arpls(y, lam = 1e6)
+            fit_2, params_2 = baseline_fitter_2.arpls(y, lam = BASELINE_FITTER_LAMBDA)
             edited_y = y - fit_2
-            
+
             #defining a search area for pre-deconvolution peaks//définir une zone de recherche
-            search_area_y = edited_y[np.where(x > 1200)[0][0]:np.where(x > 1750)[0][0]]
-            search_area_x = x[np.where(x > 1200)[0][0]:np.where(x > 1750)[0][0]]
-            
+            search_area_y = edited_y[np.where(x > FIND_PEAKS_SEARCH_AREA_START)[0][0]:np.where(x > FIND_PEAKS_SEARCH_AREA_END)[0][0]]
+            search_area_x = x[np.where(x > FIND_PEAKS_SEARCH_AREA_START)[0][0]:np.where(x > FIND_PEAKS_SEARCH_AREA_END)[0][0]]
+
             #defining a search area for 1st order peaks fit
-            fit_search_area_x = x[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]]
-            fit_search_area_y = edited_y[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]]
-            
+            fit_search_area_x = x[np.where(x > FIRST_ORDER_SEARCH_AREA_START)[0][0]:np.where(x > FIRST_ORDER_SEARCH_AREA_END)[0][0]]
+            fit_search_area_y = edited_y[np.where(x > FIRST_ORDER_SEARCH_AREA_START)[0][0]:np.where(x > FIRST_ORDER_SEARCH_AREA_END)[0][0]]
+
             #defining a search area for 2nd Order peaks fit
-            fit2_search_area_x = x[np.where(x > 2000)[0][0]:]
-            fit2_search_area_y = edited_y[np.where(x > 2000)[0][0]:]
-            
+            fit2_search_area_x = x[np.where(x > SECOND_ORDER_SEARCH_AREA_START)[0][0]:]
+            fit2_search_area_y = edited_y[np.where(x > SECOND_ORDER_SEARCH_AREA_START)[0][0]:]
+
             #Plotting//Traçage
             fig = plt.figure()
             ax = fig.add_subplot()
             ax.plot(x,edited_y, zorder = 10, label = 'Raw Data minus Fluorescence')
             ax.plot(x,y, label = 'Raw Data')
-            ax.set_xlim(100,2000)
+            ax.set_xlim(PLOT_X_START, PLOT_X_END)
             ax.set_xlabel('Raman Shift (cm$^{-1}$)')
             ax.set_ylabel('Intensity (counts)')
             ax.set_title(f'Raman Spectrum: {sample_name} Area {area_number} {laser_wavelength}')
@@ -213,15 +242,15 @@ for sample_name in sample_names:
             if laser_wavelength == 532:
                 temp_peaks, properties = find_peaks(search_area_y,
                                                     height= (search_area_y.mean()),
-                                                    prominence=4,
+                                                    prominence=FIND_PEAKS_PROMINENCE,
                                                     distance=len(edited_y)/25)
 
             else: #Edit find_peaks as appropriate for other wavelengths//modifiez « find_peaks » selon vos besoins
                 temp_peaks, properties = find_peaks(search_area_y,
                                                     height= (search_area_y.mean()),
-                                                    prominence=6,
-                                                    distance=80)
-                
+                                                    prominence=FIND_PEAKS_PROMINENCE,
+                                                    distance=len(edited_y)/25)
+
 
             peaks = [np.where(edited_y == search_area_y[temp_peaks[0]])[0][0],np.where(edited_y == search_area_y[temp_peaks[1]])[0][0]]
 
@@ -230,12 +259,12 @@ for sample_name in sample_names:
             #Find Local Minimum between First order Peaks//Trouver le minimum local
             valley_y = min(edited_y[peaks[0]:peaks[1]])
             valley_x = (x[np.where(edited_y == valley_y)[0]])[0]
-            
+
             #Plotting Bands
             ax.axvline(x[peaks[0]],color = 'r',label = f'D Band:{x[peaks[0]]}')
             ax.axvline(x[peaks[1]],color = 'g',label = f'G Band: {x[peaks[1]]}')
             ax.axvline(valley_x,color = 'y',label = f'Local Minimum: {valley_x}')
-            
+
             #########################
             #Curve Fitting to Deconvolve Peaks
             #########################
@@ -263,7 +292,7 @@ for sample_name in sample_names:
                               max_height, 1630, np.inf, #G
                               max_height, 1670, np.inf, #D2
                               max_height, 1250, np.inf, #D4
-                              max_height, 1550, np.inf] #D3
+                              max_height, 1550, 100] #D3
             bounds_1 = (lower_bounds_1, upper_bounds_1)
 
             lower_bounds_2 = [0, 2250, 0, #D1
@@ -281,7 +310,7 @@ for sample_name in sample_names:
             try:
                 order1_fit, _ = curve_fit(order1, fit_search_area_x, fit_search_area_y, p0=p0, bounds = bounds_1, maxfev=1000, loss = 'huber')
                 order1_fit_y = order1(fit_search_area_x, *order1_fit)
-            
+
             #Error Handling
             except ValueError as e:
                 print(f"Couldn't fit due to a data problem (ValueError). Moving to next sample.")
@@ -295,7 +324,7 @@ for sample_name in sample_names:
                 print(f"An UNEXPECTED error occurred: {type(e).__name__}. Moving to next sample.")
                 print(f"  Details: {e}")
 
-            
+
             else:
 
                 #First Order Plots
@@ -321,15 +350,14 @@ for sample_name in sample_names:
                 #Chi Squared (Quality of Fit) Calculations
                 #(for first order, second order deconvolution is for validation of first order deconvolution positions only)
 
-                gain = 3
-                readout_noise_electrons = 4
-                readout_noise_counts = readout_noise_electrons/gain
 
-                total_electrons = (y[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]] * gain)
-                baseline_electrons = (fit_2[np.where(x > 500)[0][0]:np.where(x > 2000)[0][0]] * gain)
+                readout_noise_counts = READOUT_NOISE_ELECTRONS/GAIN
+
+                total_electrons = (y[np.where(x > FIRST_ORDER_SEARCH_AREA_START)[0][0]:np.where(x > FIRST_ORDER_SEARCH_AREA_END)[0][0]] * GAIN)
+                baseline_electrons = (fit_2[np.where(x > FIRST_ORDER_SEARCH_AREA_START)[0][0]:np.where(x > FIRST_ORDER_SEARCH_AREA_END)[0][0]] * GAIN)
 
                 shot_noise_electrons = np.sqrt(total_electrons + baseline_electrons)
-                shot_noise_counts = shot_noise_electrons/(gain)
+                shot_noise_counts = shot_noise_electrons/(GAIN)
 
                 y_err = np.sqrt((shot_noise_counts**2) + (readout_noise_counts**2))
                 chi_squared = chisquared(fit_search_area_y,order1_fit_y,y_err)
@@ -442,19 +470,17 @@ for sample_name in sample_names:
 
             #Show Plot
             ax.legend()
-            plt.show()
+            plt.savefig(f'{sample_name}_{area_number}_{laser_wavelength}.png')
+            plt.close()
 
 #to write to a .csv file//pour écrire dans un fichier .csv
 #Convert the list of dictionaries into a pandas DataFrame
 results_df = pd.DataFrame(all_results)
 
-#Define the output file path
-outputfile = '/Users/guy/Desktop/Sherbrooke_Lab_Data/Raman Data/Master Data TST.csv'
-
 #Save the DataFrame to a CSV file.
 #The `index=False` argument prevents pandas from writing a new index column.
-results_df.to_csv(outputfile, index=False)
+results_df.to_csv(OUTPUTFILE, index=False)
 
 print("\n-------------------------------------------")
-print(f"Analysis complete. Results saved to:\n{outputfile}")
+print(f"Analysis complete. Results saved to:\n{OUTPUTFILE}")
 print("-------------------------------------------")
